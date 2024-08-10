@@ -1,6 +1,6 @@
 use error::Error;
-use std::ffi::{OsStr, OsString};
-use std::os::windows::ffi::{OsStrExt, OsStringExt};
+use std::ffi::OsStr;
+use std::os::windows::ffi::OsStrExt;
 use std::os::windows::raw::HANDLE;
 use windows_sys::Win32::Foundation::{
     ERROR_AUTODATASEG_EXCEEDS_64k, ERROR_ITERATED_DATA_EXCEEDS_64k, ERROR_ACCESS_DENIED,
@@ -446,39 +446,47 @@ fn map_win32_system_error_code(attach_result: u32) -> Error {
     }
 }
 
-fn get_drive_letters() -> Vec<String> {
+fn get_drive_letters() -> Vec<char> {
     // NOTE: 512 is more than enough
     let mut buffer: [u16; 512] = [0; 512];
     let buffer_len = unsafe { GetLogicalDriveStringsW(buffer.len() as u32, buffer.as_mut_ptr()) };
-    let drive_strings = OsString::from_wide(&buffer[..buffer_len as usize]);
 
-    let drive_list: Vec<String> = drive_strings
-        .to_string_lossy()
-        .split('\0')
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect();
+    // Pre-allocate vector for drive letters (estimate 1 char per 4 wide chars)
+    let mut drive_letters = Vec::with_capacity((buffer_len / 4) as usize);
 
-    drive_list
+    let mut start = 0;
+    for i in 0..buffer_len as usize {
+        if buffer[i] == 0 {
+            if start < i {
+                // Get the first character of the wide string slice and convert it to char
+                if let Some(first_char) = std::char::from_u32(buffer[start] as u32) {
+                    drive_letters.push(first_char);
+                }
+            }
+            start = i + 1;
+        }
+    }
+
+    drive_letters
 }
 
-fn get_new_drive_letter(before: &[String], after: &[String]) -> Option<char> {
+fn get_new_drive_letter(before: &[char], after: &[char]) -> Option<char> {
     after
         .iter()
-        .find(|letter| !before.contains(letter))
-        .and_then(|drive| drive.chars().next())
+        .find(|&&letter| !before.contains(&letter))
+        .copied()
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_mount_vhd_read_only() {
         let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
         let letter = vhd.mount(MountMode::ReadOnly, false).unwrap();
+        dbg!(&letter);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
     }
 
@@ -486,6 +494,7 @@ mod tests {
     fn test_mount_vhd_read_only_permanent() {
         let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
         let letter = vhd.mount(MountMode::ReadOnly, true).unwrap();
+        dbg!(&letter);
         drop(vhd);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
     }
@@ -494,6 +503,15 @@ mod tests {
     fn test_mount_vhd_read_write() {
         let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
         let letter = vhd.mount(MountMode::ReadWrite, false).unwrap();
+        dbg!(&letter);
+        assert!(Path::new(&format!(r"{letter}:\")).is_dir());
+    }
+
+    #[test]
+    fn test_mount_vhd_read_write_permanent() {
+        let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
+        let letter = vhd.mount(MountMode::ReadWrite, true).unwrap();
+        dbg!(&letter);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
     }
 }
