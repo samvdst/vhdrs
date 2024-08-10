@@ -1,10 +1,3 @@
-#![allow(
-    clippy::missing_safety_doc,
-    non_upper_case_globals,
-    dead_code,
-    unused_variables
-)]
-
 use error::Error;
 use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
@@ -94,6 +87,7 @@ pub use error::Result;
 
 mod error;
 
+#[derive(Debug)]
 pub struct Vhd {
     path: Vec<u16>,
     handle: HANDLE,
@@ -193,11 +187,10 @@ impl Vhd {
     }
 }
 
-// unfortunately we do not know which errors are relevant for OpenVirtualDisk and
-// AttachVirtualDisk
+// unfortunately I do not know which errors are relevant for `OpenVirtualDisk` and `AttachVirtualDisk`
 // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-
 //
-// TODO: add more known error codes. these are all from 0-499
+// TODO: add more error codes. these are 0-499
 fn map_win32_system_error_code(attach_result: u32) -> Error {
     match attach_result {
         ERROR_INVALID_FUNCTION => Error::ERROR_INVALID_FUNCTION,
@@ -347,11 +340,13 @@ fn map_win32_system_error_code(attach_result: u32) -> Error {
         ERROR_INVALID_EXE_SIGNATURE => Error::ERROR_INVALID_EXE_SIGNATURE,
         ERROR_EXE_MARKED_INVALID => Error::ERROR_EXE_MARKED_INVALID,
         ERROR_BAD_EXE_FORMAT => Error::ERROR_BAD_EXE_FORMAT,
+        #[allow(non_upper_case_globals)]
         ERROR_ITERATED_DATA_EXCEEDS_64k => Error::ERROR_ITERATED_DATA_EXCEEDS_64k,
         ERROR_INVALID_MINALLOCSIZE => Error::ERROR_INVALID_MINALLOCSIZE,
         ERROR_DYNLINK_FROM_INVALID_RING => Error::ERROR_DYNLINK_FROM_INVALID_RING,
         ERROR_IOPL_NOT_ENABLED => Error::ERROR_IOPL_NOT_ENABLED,
         ERROR_INVALID_SEGDPL => Error::ERROR_INVALID_SEGDPL,
+        #[allow(non_upper_case_globals)]
         ERROR_AUTODATASEG_EXCEEDS_64k => Error::ERROR_AUTODATASEG_EXCEEDS_64k,
         ERROR_RING2SEG_MUST_BE_MOVABLE => Error::ERROR_RING2SEG_MUST_BE_MOVABLE,
         ERROR_RELOC_CHAIN_XEEDS_SEGLIM => Error::ERROR_RELOC_CHAIN_XEEDS_SEGLIM,
@@ -452,7 +447,8 @@ fn map_win32_system_error_code(attach_result: u32) -> Error {
 }
 
 fn get_drive_letters() -> Vec<String> {
-    let mut buffer: [u16; 1024] = [0; 1024];
+    // NOTE: 512 is more than enough
+    let mut buffer: [u16; 512] = [0; 512];
     let buffer_len = unsafe { GetLogicalDriveStringsW(buffer.len() as u32, buffer.as_mut_ptr()) };
     let drive_strings = OsString::from_wide(&buffer[..buffer_len as usize]);
 
