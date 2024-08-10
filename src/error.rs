@@ -6,6 +6,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("Failed to detect the mount drive.")]
+    MountDriveDetection,
+
     #[error("Failed to open virtual disk. Error code: {0}")]
     UNKNOWN_OPEN_ERROR(u32),
 

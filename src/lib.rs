@@ -1,8 +1,13 @@
-#![allow(clippy::missing_safety_doc, non_upper_case_globals)]
+#![allow(
+    clippy::missing_safety_doc,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables
+)]
 
 use error::Error;
-use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
+use std::ffi::{OsStr, OsString};
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::os::windows::raw::HANDLE;
 use windows_sys::Win32::Foundation::{
     ERROR_AUTODATASEG_EXCEEDS_64k, ERROR_ITERATED_DATA_EXCEEDS_64k, ERROR_ACCESS_DENIED,
@@ -77,6 +82,7 @@ use windows_sys::Win32::Foundation::{
     ERROR_UNEXP_NET_ERR, ERROR_VC_DISCONNECTED, ERROR_VIRUS_DELETED, ERROR_VIRUS_INFECTED,
     ERROR_WAIT_NO_CHILDREN, ERROR_WRITE_FAULT, ERROR_WRITE_PROTECT, ERROR_WRONG_DISK, WAIT_TIMEOUT,
 };
+use windows_sys::Win32::Storage::FileSystem::GetLogicalDriveStringsW;
 use windows_sys::Win32::Storage::Vhd::{
     AttachVirtualDisk, OpenVirtualDisk, ATTACH_VIRTUAL_DISK_FLAG_PERMANENT_LIFETIME,
     ATTACH_VIRTUAL_DISK_FLAG_READ_ONLY, VIRTUAL_DISK_ACCESS_ATTACH_RO,
@@ -120,7 +126,7 @@ impl Vhd {
     /// Mount the [`Vhd`] to a Windows device. Persistent will mount the [`Vhd`] until explicitly
     /// `unmounted` or the Windows system shuts down. Otherwise the mount lives until [`Vhd`] is
     /// dropped (tied to the handle).
-    pub fn mount(&mut self, mode: MountMode, persistent: bool) -> Result<()> {
+    pub fn mount(&mut self, mode: MountMode, persistent: bool) -> Result<char> {
         let storage_type = VIRTUAL_STORAGE_TYPE {
             DeviceId: match self.vhd_type {
                 VhdType::Vhd => VIRTUAL_STORAGE_TYPE_DEVICE_VHD,
@@ -160,6 +166,8 @@ impl Vhd {
             flags |= ATTACH_VIRTUAL_DISK_FLAG_PERMANENT_LIFETIME;
         }
 
+        let drives_before = get_drive_letters();
+
         let attach_result = unsafe {
             AttachVirtualDisk(
                 self.handle,
@@ -172,7 +180,14 @@ impl Vhd {
         };
 
         match attach_result {
-            ERROR_SUCCESS => Ok(()),
+            ERROR_SUCCESS => {
+                let drives_after = get_drive_letters();
+
+                let new_drive = get_new_drive_letter(&drives_before, &drives_after)
+                    .ok_or(Error::MountDriveDetection)?;
+
+                Ok(new_drive)
+            }
             e => Err(map_win32_system_error_code(e)),
         }
     }
@@ -436,21 +451,53 @@ fn map_win32_system_error_code(attach_result: u32) -> Error {
     }
 }
 
+fn get_drive_letters() -> Vec<String> {
+    let mut buffer: [u16; 1024] = [0; 1024];
+    let buffer_len = unsafe { GetLogicalDriveStringsW(buffer.len() as u32, buffer.as_mut_ptr()) };
+    let drive_strings = OsString::from_wide(&buffer[..buffer_len as usize]);
+
+    let drive_list: Vec<String> = drive_strings
+        .to_string_lossy()
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    drive_list
+}
+
+fn get_new_drive_letter(before: &[String], after: &[String]) -> Option<char> {
+    after
+        .iter()
+        .find(|letter| !before.contains(letter))
+        .and_then(|drive| drive.chars().next())
+}
+
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
-    use std::{thread::sleep, time::Duration};
 
     #[test]
     fn test_mount_vhd_read_only() {
-        let mut vhd = Vhd::new(r"C:\Users\sam\dev\vhdrs\file.vhd", VhdType::Vhd);
-        assert!(vhd.mount(MountMode::ReadOnly, false).is_ok());
-        sleep(Duration::from_secs(5));
+        let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
+        let letter = vhd.mount(MountMode::ReadOnly, false).unwrap();
+        assert!(Path::new(&format!(r"{letter}:\")).is_dir());
+    }
+
+    #[test]
+    fn test_mount_vhd_read_only_permanent() {
+        let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
+        let letter = vhd.mount(MountMode::ReadOnly, true).unwrap();
+        drop(vhd);
+        assert!(Path::new(&format!(r"{letter}:\")).is_dir());
     }
 
     #[test]
     fn test_mount_vhd_read_write() {
-        let mut vhd = Vhd::new(r"C:\Users\sam\dev\vhdrs\file.vhd", VhdType::Vhd);
-        assert!(vhd.mount(MountMode::ReadWrite, false).is_ok());
+        let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
+        let letter = vhd.mount(MountMode::ReadWrite, false).unwrap();
+        assert!(Path::new(&format!(r"{letter}:\")).is_dir());
     }
 }
