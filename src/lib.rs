@@ -5,10 +5,11 @@ use std::os::windows::raw::HANDLE;
 use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use windows_sys::Win32::Storage::FileSystem::GetLogicalDriveStringsW;
 use windows_sys::Win32::Storage::Vhd::{
-    AttachVirtualDisk, OpenVirtualDisk, ATTACH_VIRTUAL_DISK_FLAG_PERMANENT_LIFETIME,
-    ATTACH_VIRTUAL_DISK_FLAG_READ_ONLY, VIRTUAL_DISK_ACCESS_ATTACH_RO,
-    VIRTUAL_DISK_ACCESS_ATTACH_RW, VIRTUAL_STORAGE_TYPE, VIRTUAL_STORAGE_TYPE_DEVICE_VHD,
-    VIRTUAL_STORAGE_TYPE_DEVICE_VHDX, VIRTUAL_STORAGE_TYPE_VENDOR_MICROSOFT,
+    AttachVirtualDisk, DetachVirtualDisk, OpenVirtualDisk,
+    ATTACH_VIRTUAL_DISK_FLAG_PERMANENT_LIFETIME, ATTACH_VIRTUAL_DISK_FLAG_READ_ONLY,
+    DETACH_VIRTUAL_DISK_FLAG_NONE, VIRTUAL_DISK_ACCESS_ATTACH_RO, VIRTUAL_DISK_ACCESS_ATTACH_RW,
+    VIRTUAL_STORAGE_TYPE, VIRTUAL_STORAGE_TYPE_DEVICE_VHD, VIRTUAL_STORAGE_TYPE_DEVICE_VHDX,
+    VIRTUAL_STORAGE_TYPE_VENDOR_MICROSOFT,
 };
 
 pub use error::Result;
@@ -48,7 +49,7 @@ impl Vhd {
     /// Mount the [`Vhd`] to a Windows device. Persistent will mount the [`Vhd`] until explicitly
     /// `unmounted` or the Windows system shuts down. Otherwise the mount lives until [`Vhd`] is
     /// dropped (tied to the handle).
-    pub fn mount(&mut self, mode: MountMode, persistent: bool) -> Result<char> {
+    pub fn attach(&mut self, mode: MountMode, persistent: bool) -> Result<char> {
         let storage_type = VIRTUAL_STORAGE_TYPE {
             DeviceId: match self.vhd_type {
                 VhdType::Vhd => VIRTUAL_STORAGE_TYPE_DEVICE_VHD,
@@ -112,6 +113,16 @@ impl Vhd {
             e => Err(e.into()),
         }
     }
+
+    pub fn detach(&self) -> Result<()> {
+        let result = unsafe { DetachVirtualDisk(self.handle, DETACH_VIRTUAL_DISK_FLAG_NONE, 0) };
+
+        if result != ERROR_SUCCESS {
+            return Err(result.into());
+        }
+
+        Ok(())
+    }
 }
 
 fn get_drive_letters() -> Vec<char> {
@@ -148,12 +159,37 @@ fn get_new_drive_letter(before: &[char], after: &[char]) -> Option<char> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
+    use std::{path::Path, thread::sleep, time::Duration};
+
+    #[ignore]
+    #[allow(dead_code)]
+    #[test]
+    fn attach_manual() {
+        let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
+        let attach_result = vhd.attach(MountMode::ReadOnly, true);
+        dbg!(&attach_result);
+        assert!(attach_result.is_ok());
+
+        sleep(Duration::from_secs(5));
+
+        let detach_result = vhd.detach();
+        assert!(detach_result.is_ok());
+
+        sleep(Duration::from_secs(5));
+
+        let reattach_result = vhd.attach(MountMode::ReadOnly, true);
+        assert!(reattach_result.is_ok());
+
+        sleep(Duration::from_secs(5));
+
+        let redetach_result = vhd.detach();
+        assert!(redetach_result.is_ok());
+    }
 
     #[test]
     fn test_mount_vhd_read_only() {
         let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
-        let letter = vhd.mount(MountMode::ReadOnly, false).unwrap();
+        let letter = vhd.attach(MountMode::ReadOnly, false).unwrap();
         dbg!(&letter);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
     }
@@ -161,7 +197,7 @@ mod tests {
     #[test]
     fn test_mount_vhd_read_only_permanent() {
         let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
-        let letter = vhd.mount(MountMode::ReadOnly, true).unwrap();
+        let letter = vhd.attach(MountMode::ReadOnly, true).unwrap();
         dbg!(&letter);
         drop(vhd);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
@@ -170,7 +206,7 @@ mod tests {
     #[test]
     fn test_mount_vhd_read_write() {
         let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
-        let letter = vhd.mount(MountMode::ReadWrite, false).unwrap();
+        let letter = vhd.attach(MountMode::ReadWrite, false).unwrap();
         dbg!(&letter);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
     }
@@ -178,7 +214,7 @@ mod tests {
     #[test]
     fn test_mount_vhd_read_write_permanent() {
         let mut vhd = Vhd::new("file.vhd", VhdType::Vhd);
-        let letter = vhd.mount(MountMode::ReadWrite, true).unwrap();
+        let letter = vhd.attach(MountMode::ReadWrite, true).unwrap();
         dbg!(&letter);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
     }
