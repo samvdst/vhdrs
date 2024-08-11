@@ -2,19 +2,22 @@
 
 use error::Error;
 use std::ffi::OsStr;
+use std::fmt::Display;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::raw::HANDLE;
 use std::ptr::null_mut;
+use uuid::Uuid;
+use windows_sys::core::GUID;
 use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use windows_sys::Win32::Storage::FileSystem::GetLogicalDriveStringsW;
 use windows_sys::Win32::Storage::Vhd::{
     AttachVirtualDisk, DetachVirtualDisk, GetVirtualDiskInformation, OpenVirtualDisk,
     ATTACH_VIRTUAL_DISK_FLAG_PERMANENT_LIFETIME, ATTACH_VIRTUAL_DISK_FLAG_READ_ONLY,
     DETACH_VIRTUAL_DISK_FLAG_NONE, GET_VIRTUAL_DISK_INFO, GET_VIRTUAL_DISK_INFO_0,
-    GET_VIRTUAL_DISK_INFO_0_3, GET_VIRTUAL_DISK_INFO_SIZE, VIRTUAL_DISK_ACCESS_ATTACH_RO,
-    VIRTUAL_DISK_ACCESS_ATTACH_RW, VIRTUAL_DISK_ACCESS_GET_INFO, VIRTUAL_STORAGE_TYPE,
-    VIRTUAL_STORAGE_TYPE_DEVICE_VHD, VIRTUAL_STORAGE_TYPE_DEVICE_VHDX,
-    VIRTUAL_STORAGE_TYPE_VENDOR_MICROSOFT,
+    GET_VIRTUAL_DISK_INFO_0_3, GET_VIRTUAL_DISK_INFO_IDENTIFIER, GET_VIRTUAL_DISK_INFO_SIZE,
+    VIRTUAL_DISK_ACCESS_ATTACH_RO, VIRTUAL_DISK_ACCESS_ATTACH_RW, VIRTUAL_DISK_ACCESS_DETACH,
+    VIRTUAL_DISK_ACCESS_GET_INFO, VIRTUAL_STORAGE_TYPE, VIRTUAL_STORAGE_TYPE_DEVICE_VHD,
+    VIRTUAL_STORAGE_TYPE_DEVICE_VHDX, VIRTUAL_STORAGE_TYPE_VENDOR_MICROSOFT,
 };
 
 pub use error::Result;
@@ -41,6 +44,28 @@ pub enum VhdType {
     Vhdx,
 }
 
+#[derive(Debug)]
+pub struct VhdIdentifier(Uuid);
+
+impl VhdIdentifier {
+    pub fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+}
+
+impl Display for VhdIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<GUID> for VhdIdentifier {
+    fn from(guid: GUID) -> Self {
+        let uuid = Uuid::from_fields(guid.data1, guid.data2, guid.data3, &guid.data4);
+        VhdIdentifier(uuid)
+    }
+}
+
 impl Vhd {
     /// Opens a VHD/VHDX file in either `ReadOnly` or `ReadWrite` mode. This method does not
     /// automatically attach the file. The VHD type is inferred from the file extension unless
@@ -56,10 +81,26 @@ impl Vhd {
     ///
     /// A `Result` containing the initialized `Vhd` instance on success, or an error if the file
     /// could not be opened.
-    pub fn open<P: AsRef<OsStr>>(
+    pub fn new<P: AsRef<OsStr>>(
         path: P,
         open_mode: OpenMode,
         force_type: Option<VhdType>,
+    ) -> Result<Self> {
+        let mut access_flags = match open_mode {
+            OpenMode::ReadOnly => VIRTUAL_DISK_ACCESS_ATTACH_RO,
+            OpenMode::ReadWrite => VIRTUAL_DISK_ACCESS_ATTACH_RW,
+        };
+
+        access_flags |= VIRTUAL_DISK_ACCESS_GET_INFO;
+
+        Self::open(path, open_mode, force_type, access_flags)
+    }
+
+    fn open<P: AsRef<OsStr>>(
+        path: P,
+        open_mode: OpenMode,
+        force_type: Option<VhdType>,
+        access_flags: i32,
     ) -> Result<Self> {
         let wide_path: Vec<u16> = path.as_ref().encode_wide().chain(Some(0)).collect();
 
@@ -89,18 +130,11 @@ impl Vhd {
             VendorId: VIRTUAL_STORAGE_TYPE_VENDOR_MICROSOFT,
         };
 
-        let mut access = match open_mode {
-            OpenMode::ReadOnly => VIRTUAL_DISK_ACCESS_ATTACH_RO,
-            OpenMode::ReadWrite => VIRTUAL_DISK_ACCESS_ATTACH_RW,
-        };
-
-        access |= VIRTUAL_DISK_ACCESS_GET_INFO;
-
         let open_result = unsafe {
             OpenVirtualDisk(
                 &storage_type,
                 wide_path.as_ptr(),
-                access,
+                access_flags,
                 0,
                 std::ptr::null(),
                 &mut handle,
@@ -165,22 +199,30 @@ impl Vhd {
         }
     }
 
-    /// Detaches the previously attached [`Vhd`].
+    /// Detaches the previously attached VHD specified by `path`.
     ///
-    /// This function will return an `ERROR_NOT_READY` if an attempt is made to detach a VHD that
-    /// has not been attached. Manual detachment is only necessary if the VHD was attached in
-    /// persistent mode. Otherwise, the [`Vhd`] will be automatically detached when it is dropped.
+    /// This method detaches the VHD as long as the original `Vhd` instance, which holds the handle,
+    /// is still alive. If the `Vhd` instance is dropped while the VHD is attached in permanent
+    /// `ReadWrite` mode, the underlying C library retains the handle, even though Rust no longer does.
+    /// Attempting to reopen the VHD and detach it will result in an `ERROR_SHARING_VIOLATION`,
+    /// as the handle is only fully released when the process terminates.
+    ///
+    /// This behavior is probably intentional or maybe just a skill issue on my part
+    /// ¯\_(ツ)_/¯
+    ///
+    /// To avoid issues, only use permanent mode if you truly want the VHD to remain attached
+    /// beyond the lifetime of the process.
     ///
     /// # Returns
     ///
     /// A `Result` indicating success or containing the error encountered during detachment.
-    pub fn detach(&mut self) -> Result<()> {
-        let result = unsafe { DetachVirtualDisk(self.handle, DETACH_VIRTUAL_DISK_FLAG_NONE, 0) };
-
+    pub fn detach<P: AsRef<OsStr>>(path: P) -> Result<()> {
+        let inner_vhd = Self::open(path, OpenMode::ReadOnly, None, VIRTUAL_DISK_ACCESS_DETACH)?;
+        let result =
+            unsafe { DetachVirtualDisk(inner_vhd.handle, DETACH_VIRTUAL_DISK_FLAG_NONE, 0) };
         if result != ERROR_SUCCESS {
             return Err(result.into());
         }
-
         Ok(())
     }
 
@@ -215,6 +257,41 @@ impl Vhd {
         }
 
         unsafe { Ok(info.Anonymous.Size) }
+    }
+
+    /// Retrieves the unique identifier (`VhdIdentifier`) of the attached [`Vhd`].
+    ///
+    /// This method returns a `VhdIdentifier` that uniquely identifies the virtual disk.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the `VhdIdentifier` of the virtual disk on success, or an error if the identifier could not be retrieved.
+    ///
+    pub fn get_identifier(&mut self) -> Result<VhdIdentifier> {
+        let mut info = GET_VIRTUAL_DISK_INFO {
+            Version: GET_VIRTUAL_DISK_INFO_IDENTIFIER,
+            Anonymous: GET_VIRTUAL_DISK_INFO_0 {
+                Identifier: GUID {
+                    data1: 0,
+                    data2: 0,
+                    data3: 0,
+                    data4: [0, 0, 0, 0, 0, 0, 0, 0],
+                },
+            },
+        };
+
+        let mut info_size = std::mem::size_of::<GET_VIRTUAL_DISK_INFO>() as u32;
+
+        let result = unsafe {
+            GetVirtualDiskInformation(self.handle, &mut info_size, &mut info, std::ptr::null_mut())
+        };
+
+        if result != ERROR_SUCCESS {
+            return Err(result.into());
+        }
+
+        let identifier: VhdIdentifier = unsafe { info.Anonymous.Identifier.into() };
+        Ok(identifier)
     }
 }
 
@@ -253,11 +330,16 @@ fn get_new_drive_letter(before: &[char], after: &[char]) -> Option<char> {
 mod tests {
     use super::*;
     use std::path::Path;
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    // NOTE: tests run to quick (even singlethreaded)
 
     #[ignore]
     #[test]
     fn attach() {
-        let mut vhd = Vhd::open("file.vhd", OpenMode::ReadOnly, None).unwrap();
+        sleep(Duration::from_secs(1));
+        let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
         let attach_result = vhd.attach(true);
         dbg!(&attach_result);
         assert!(attach_result.is_ok());
@@ -266,16 +348,17 @@ mod tests {
     #[ignore]
     #[test]
     fn detach() {
-        let mut vhd = Vhd::open("file.vhd", OpenMode::ReadOnly, None).unwrap();
-        let result = vhd.detach();
+        sleep(Duration::from_secs(1));
+        let result = Vhd::detach("file.vhd");
         dbg!(&result);
         assert!(result.is_ok());
     }
 
     #[ignore]
     #[test]
-    fn info() {
-        let mut vhd = Vhd::open("file.vhd", OpenMode::ReadOnly, None).unwrap();
+    fn get_size() {
+        sleep(Duration::from_secs(1));
+        let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
         let info = vhd.get_size();
         match info {
             Ok(info) => {
@@ -291,36 +374,52 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[test]
-    fn test_mount_vhd_read_only() {
-        let mut vhd = Vhd::open("file.vhd", OpenMode::ReadOnly, None).unwrap();
+    fn get_identifier() {
+        sleep(Duration::from_secs(1));
+        let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
+        let info = vhd.get_identifier();
+        dbg!(&info);
+    }
+
+    #[ignore]
+    #[test]
+    fn test_mount_vhd_read_only_temporary() {
+        sleep(Duration::from_secs(1));
+        let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
         let letter = vhd.attach(false).unwrap();
-        dbg!(&letter);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
     }
 
+    #[ignore]
+    #[test]
+    fn test_mount_vhd_read_write_temporary() {
+        sleep(Duration::from_secs(1));
+        let mut vhd = Vhd::new("file.vhd", OpenMode::ReadWrite, None).unwrap();
+        let letter = vhd.attach(false).unwrap();
+        assert!(Path::new(&format!(r"{letter}:\")).is_dir());
+    }
+
+    #[ignore]
     #[test]
     fn test_mount_vhd_read_only_permanent() {
-        let mut vhd = Vhd::open("file.vhd", OpenMode::ReadOnly, None).unwrap();
+        sleep(Duration::from_secs(1));
+        let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
         let letter = vhd.attach(true).unwrap();
-        dbg!(&letter);
         drop(vhd);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
+        Vhd::detach("file.vhd").unwrap();
     }
 
-    #[test]
-    fn test_mount_vhd_read_write() {
-        let mut vhd = Vhd::open("file.vhd", OpenMode::ReadWrite, None).unwrap();
-        let letter = vhd.attach(false).unwrap();
-        dbg!(&letter);
-        assert!(Path::new(&format!(r"{letter}:\")).is_dir());
-    }
-
+    #[ignore]
     #[test]
     fn test_mount_vhd_read_write_permanent() {
-        let mut vhd = Vhd::open("file.vhd", OpenMode::ReadWrite, None).unwrap();
+        sleep(Duration::from_secs(1));
+        let mut vhd = Vhd::new("file.vhd", OpenMode::ReadWrite, None).unwrap();
         let letter = vhd.attach(true).unwrap();
-        dbg!(&letter);
+        drop(vhd);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
+        Vhd::detach("file.vhd").unwrap();
     }
 }
