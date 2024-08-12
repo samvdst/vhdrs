@@ -3,6 +3,7 @@
 use error::Error;
 use std::ffi::OsStr;
 use std::fmt::Display;
+use std::ops::Deref;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::raw::HANDLE;
 use std::ptr::null_mut;
@@ -57,9 +58,10 @@ pub enum VhdType {
 #[derive(Debug)]
 pub struct VhdIdentifier(Uuid);
 
-// TODO: could be a deref
-impl VhdIdentifier {
-    pub fn as_uuid(&self) -> &Uuid {
+impl Deref for VhdIdentifier {
+    type Target = Uuid;
+
+    fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
@@ -370,7 +372,7 @@ mod tests {
     fn get_identifier() {
         sleep(Duration::from_secs(1));
         let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
-        let info = vhd.get_identifier();
+        let info = vhd.get_identifier().unwrap();
         dbg!(&info);
     }
 
