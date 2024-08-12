@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use error::Error;
 use std::ffi::OsStr;
 use std::fmt::Display;
@@ -27,9 +25,7 @@ mod error;
 
 #[derive(Debug)]
 pub struct Vhd {
-    path: Vec<u16>,
     handle: HANDLE,
-    vhd_type: VhdType,
     mode: OpenMode,
 }
 
@@ -159,9 +155,7 @@ impl Vhd {
         };
 
         Ok(Vhd {
-            path: wide_path,
             handle,
-            vhd_type,
             mode: open_mode,
         })
     }
@@ -412,7 +406,6 @@ mod tests {
     #[ignore]
     #[test]
     fn attach() {
-        sleep(Duration::from_secs(1));
         let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
         let attach_result = vhd.attach(true);
         dbg!(&attach_result);
@@ -423,7 +416,6 @@ mod tests {
     #[ignore]
     #[test]
     fn detach() {
-        sleep(Duration::from_secs(1));
         let result = Vhd::detach("file.vhd");
         dbg!(&result);
         assert!(result.is_ok());
