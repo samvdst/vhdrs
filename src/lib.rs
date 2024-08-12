@@ -212,19 +212,11 @@ impl Vhd {
         }
     }
 
-    /// Detaches the previously attached VHD specified by `path`.
+    /// Detaches a VHD specified by `path`.
     ///
-    /// This method detaches the VHD as long as the original `Vhd` instance, which holds the handle,
-    /// is still alive. If the `Vhd` instance is dropped while the VHD is attached in permanent
-    /// `ReadWrite` mode, the underlying C library retains the handle, even though Rust no longer does.
-    /// Attempting to reopen the VHD and detach it will result in an `ERROR_SHARING_VIOLATION`,
-    /// as the handle is only fully released when the process terminates.
-    ///
-    /// This behavior is probably intentional or maybe just a skill issue on my part
-    /// ¯\_(ツ)_/¯
-    ///
-    /// To avoid issues, only use permanent mode if you truly want the VHD to remain attached
-    /// beyond the lifetime of the process.
+    /// This function will return an `ERROR_NOT_READY` if an attempt is made to detach a VHD that
+    /// has not been attached. Manual detachment is only necessary if the VHD was attached in
+    /// persistent mode. Otherwise, the [`Vhd`] will be automatically detached when it is dropped.
     ///
     /// # Returns
     ///
