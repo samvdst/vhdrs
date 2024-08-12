@@ -8,7 +8,7 @@ use std::os::windows::raw::HANDLE;
 use std::ptr::null_mut;
 use uuid::Uuid;
 use windows_sys::core::GUID;
-use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+use windows_sys::Win32::Foundation::{CloseHandle, ERROR_SUCCESS, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::GetLogicalDriveStringsW;
 use windows_sys::Win32::Storage::Vhd::{
     AttachVirtualDisk, DetachVirtualDisk, GetVirtualDiskInformation, OpenVirtualDisk,
@@ -32,6 +32,16 @@ pub struct Vhd {
     mode: OpenMode,
 }
 
+impl Drop for Vhd {
+    fn drop(&mut self) {
+        if !self.handle.is_null() && self.handle != INVALID_HANDLE_VALUE {
+            unsafe {
+                CloseHandle(self.handle);
+            }
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum OpenMode {
     ReadOnly,
@@ -47,6 +57,7 @@ pub enum VhdType {
 #[derive(Debug)]
 pub struct VhdIdentifier(Uuid);
 
+// TODO: could be a deref
 impl VhdIdentifier {
     pub fn as_uuid(&self) -> &Uuid {
         &self.0
@@ -333,28 +344,9 @@ mod tests {
     use std::thread::sleep;
     use std::time::Duration;
 
-    // NOTE: tests run to quick (even singlethreaded)
+    // NOTE: Adding an initial sleep to ensure Windows has enough time to stabilize before running
+    // the tests, as they execute too quickly, even in single-threaded mode.
 
-    #[ignore]
-    #[test]
-    fn attach() {
-        sleep(Duration::from_secs(1));
-        let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
-        let attach_result = vhd.attach(true);
-        dbg!(&attach_result);
-        assert!(attach_result.is_ok());
-    }
-
-    #[ignore]
-    #[test]
-    fn detach() {
-        sleep(Duration::from_secs(1));
-        let result = Vhd::detach("file.vhd");
-        dbg!(&result);
-        assert!(result.is_ok());
-    }
-
-    #[ignore]
     #[test]
     fn get_size() {
         sleep(Duration::from_secs(1));
@@ -374,7 +366,6 @@ mod tests {
         }
     }
 
-    #[ignore]
     #[test]
     fn get_identifier() {
         sleep(Duration::from_secs(1));
@@ -383,27 +374,28 @@ mod tests {
         dbg!(&info);
     }
 
-    #[ignore]
     #[test]
-    fn test_mount_vhd_read_only_temporary() {
+    fn mount_vhd_read_only_temporary() {
         sleep(Duration::from_secs(1));
         let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
         let letter = vhd.attach(false).unwrap();
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
+        drop(vhd);
+        assert!(!Path::new(&format!(r"{letter}:\")).is_dir());
     }
 
-    #[ignore]
     #[test]
-    fn test_mount_vhd_read_write_temporary() {
+    fn mount_vhd_read_write_temporary() {
         sleep(Duration::from_secs(1));
         let mut vhd = Vhd::new("file.vhd", OpenMode::ReadWrite, None).unwrap();
         let letter = vhd.attach(false).unwrap();
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
+        drop(vhd);
+        assert!(!Path::new(&format!(r"{letter}:\")).is_dir());
     }
 
-    #[ignore]
     #[test]
-    fn test_mount_vhd_read_only_permanent() {
+    fn mount_vhd_read_only_permanent() {
         sleep(Duration::from_secs(1));
         let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
         let letter = vhd.attach(true).unwrap();
@@ -412,14 +404,34 @@ mod tests {
         Vhd::detach("file.vhd").unwrap();
     }
 
-    #[ignore]
     #[test]
-    fn test_mount_vhd_read_write_permanent() {
+    fn mount_vhd_read_write_permanent() {
         sleep(Duration::from_secs(1));
         let mut vhd = Vhd::new("file.vhd", OpenMode::ReadWrite, None).unwrap();
         let letter = vhd.attach(true).unwrap();
         drop(vhd);
         assert!(Path::new(&format!(r"{letter}:\")).is_dir());
         Vhd::detach("file.vhd").unwrap();
+    }
+
+    // for manual testing
+    #[ignore]
+    #[test]
+    fn attach() {
+        sleep(Duration::from_secs(1));
+        let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
+        let attach_result = vhd.attach(true);
+        dbg!(&attach_result);
+        assert!(attach_result.is_ok());
+    }
+
+    // for manual testing
+    #[ignore]
+    #[test]
+    fn detach() {
+        sleep(Duration::from_secs(1));
+        let result = Vhd::detach("file.vhd");
+        dbg!(&result);
+        assert!(result.is_ok());
     }
 }
