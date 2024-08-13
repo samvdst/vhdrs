@@ -69,7 +69,17 @@ version = "0.1.0"
 dependencies = [
  "thiserror",
  "uuid",
+ "windows-result",
  "windows-sys",
+]
+
+[[package]]
+name = "windows-result"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d1043d8214f791817bab27572aaa8af63732e11bf84aa21a45a78d6c317ae0e"
+dependencies = [
+ "windows-targets",
 ]
 
 [[package]]

@@ -16,3 +16,4 @@ windows-sys = { version = "0.59", features = [
 ] }
 thiserror = "1"
 uuid = "1"
+windows-result = "0.2.0"
