@@ -48,12 +48,6 @@ let mut vhd = vhdrs::Vhd::new("file.vhd", vhdrs::OpenMode::ReadOnly, None).unwra
 let identifier = vhd.get_identifier().unwrap();
 println!("VHD Identifier: {}", identifier);
 ```
-
-# License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE.md) file for more details.
-
-# Contributing
-Contributions are welcome! If you have suggestions for improvements or want to report issues, feel free to open an issue or a pull request on the project's [GitHub repository](https://github.com/samvdst/vhdrs).
 */
 
 use std::ffi::OsStr;

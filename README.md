@@ -59,7 +59,7 @@ println!("VHD Identifier: {}", identifier);
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE.md) file for more details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
 
 ## Contributing
 
