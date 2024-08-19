@@ -9,15 +9,6 @@ A lightweight library that provides an ergonomic interface for managing Virtual 
 - Disk Information Retrieval: Obtain detailed information about the virtual disk, including its size and unique identifier.
 - Automatic Resource Management: Handles cleanup operations, ensuring that resources like file handles are correctly released.
 
-## Installation
-
-Add this to your Cargo.toml:
-
-```toml
-[dependencies]
-vhdrs = "0.1"
-```
-
 ## Usage
 
 ### Opening a VHD/VHDX File
@@ -25,11 +16,7 @@ vhdrs = "0.1"
 You can open a VHD/VHDX file by specifying the file path and the desired access mode. The file type is inferred from the extension unless explicitly specified.
 
 ```rust
-use vhdrs::{Vhd, OpenMode, VhdType};
-
-fn main() {
-  let vhd = Vhd::new("path_to_vhd_file.vhdx", OpenMode::ReadOnly, None).unwrap();
-}
+let vhd = vhdrs::Vhd::new("file.vhd", vhdrs::OpenMode::ReadOnly, None).unwrap();
 ```
 
 ### Attaching a VHD
@@ -37,11 +24,9 @@ fn main() {
 To mount a VHD to a system drive, use the attach method. You can choose to make the mount persistent across system reboots.
 
 ```rust
-fn main() {
-  let mut vhd = Vhd::new("path_to_vhd_file.vhdx", OpenMode::ReadOnly, None).unwrap();
-  let drive_letter = vhd.attach(false).unwrap();
-  println!("VHD mounted at drive: {}", drive_letter);
-}
+let mut vhd = vhdrs::Vhd::new("file.vhd", vhdrs::OpenMode::ReadOnly, None).unwrap();
+let drive_letter = vhd.attach(false).unwrap();
+println!("VHD mounted at drive: {}", drive_letter);
 ```
 
 ### Detaching a VHD
@@ -49,10 +34,7 @@ fn main() {
 To manually unmount a VHD, use the detach method. Manual detachment is only necessary for persistent mounts; temporary mounts are automatically detached when the VHD instance is dropped.
 
 ```rust
-fn main() {
-  Vhd::detach("path_to_vhd_file.vhdx").unwrap();
-  println!("VHD detached successfully");
-}
+vhdrs::Vhd::detach("file.vhd").unwrap();
 ```
 
 ### Retrieving Disk Information
@@ -60,11 +42,9 @@ fn main() {
 You can retrieve detailed information about the VHD, including its virtual size, physical size, block size, and sector size.
 
 ```rust
-fn main() {
-  let mut vhd = Vhd::new("path_to_vhd_file.vhdx", OpenMode::ReadOnly, None).unwrap();
-  let disk_info = vhd.get_size().unwrap();
-  println!("Disk Info: {:?}", disk_info);
-}
+let mut vhd = vhdrs::Vhd::new("file.vhd", vhdrs::OpenMode::ReadOnly, None).unwrap();
+let disk_info = vhd.get_size().unwrap();
+println!("Disk Info: {:?}", disk_info);
 ```
 
 ### Getting the VHD Identifier
@@ -72,12 +52,9 @@ fn main() {
 This function retrieves a unique identifier for the attached virtual disk, useful for tracking and managing multiple VHDs.
 
 ```rust
-Code kopieren
-fn main() {
-  let mut vhd = Vhd::new("path_to_vhd_file.vhdx", OpenMode::ReadOnly, None).unwrap();
-  let identifier = vhd.get_identifier().unwrap();
-  println!("VHD Identifier: {}", identifier);
-}
+let mut vhd = vhdrs::Vhd::new("file.vhd", vhdrs::OpenMode::ReadOnly, None).unwrap();
+let identifier = vhd.get_identifier().unwrap();
+println!("VHD Identifier: {}", identifier);
 ```
 
 ## License
