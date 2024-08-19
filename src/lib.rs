@@ -11,14 +11,14 @@ A lightweight library that provides an ergonomic interface for managing Virtual 
 ## Opening a VHD/VHDX File
 You can open a VHD/VHDX file by specifying the file path and the desired access mode. The file type is inferred from the extension unless explicitly specified.
 
-```rust
+```no_run
 let vhd = vhdrs::Vhd::new("file.vhd", vhdrs::OpenMode::ReadOnly, None).unwrap();
 ```
 
 ## Attaching a VHD
 To mount a VHD to a system drive, use the attach method. You can choose to make the mount persistent across system reboots.
 
-```rust
+```no_run
 let mut vhd = vhdrs::Vhd::new("file.vhd", vhdrs::OpenMode::ReadOnly, None).unwrap();
 let drive_letter = vhd.attach(false).unwrap();
 println!("VHD mounted at drive: {}", drive_letter);
@@ -27,14 +27,14 @@ println!("VHD mounted at drive: {}", drive_letter);
 ## Detaching a VHD
 To manually unmount a VHD, use the detach method. Manual detachment is only necessary for persistent mounts; temporary mounts are automatically detached when the VHD instance is dropped.
 
-```rust
+```no_run
 vhdrs::Vhd::detach("file.vhd").unwrap();
 ```
 
 ## Retrieving Disk Information
 You can retrieve detailed information about the VHD, including its virtual size, physical size, block size, and sector size.
 
-```rust
+```no_run
 let mut vhd = vhdrs::Vhd::new("file.vhd", vhdrs::OpenMode::ReadOnly, None).unwrap();
 let disk_info = vhd.get_size().unwrap();
 println!("Disk Info: {:?}", disk_info);
@@ -43,7 +43,7 @@ println!("Disk Info: {:?}", disk_info);
 ## Getting the VHD Identifier
 This function retrieves a unique identifier for the attached virtual disk, useful for tracking and managing multiple VHDs.
 
-```rust
+```no_run
 let mut vhd = vhdrs::Vhd::new("file.vhd", vhdrs::OpenMode::ReadOnly, None).unwrap();
 let identifier = vhd.get_identifier().unwrap();
 println!("VHD Identifier: {}", identifier);
