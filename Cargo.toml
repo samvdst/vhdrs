@@ -26,3 +26,6 @@ windows-sys = { version = "0.59", features = [
 ] }
 thiserror = "1"
 uuid = "1"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-pc-windows-msvc"]
