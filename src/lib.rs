@@ -2,7 +2,7 @@
 A lightweight library that provides an ergonomic interface for managing Virtual Hard Disks (VHD/VHDX) on Windows systems. It leverages the Windows API to facilitate operations such as opening, attaching, detaching, and retrieving information from VHD files.
 
 # Features
-- Open VHD/VHDX Files: Supports opening VHD/VHDX files in both ReadOnly and ReadWrite modes.
+- Open VHD/VHDX Files: Supports opening VHD/VHDX files in both `ReadOnly` and `ReadWrite` modes.
 - Mounting and Unmounting: Attach and detach virtual disks to and from the system with options for persistent and temporary mounts.
 - Disk Information Retrieval: Obtain detailed information about the virtual disk, including its size and unique identifier.
 - Automatic Resource Management: Handles cleanup operations, ensuring that resources like file handles are correctly released.
@@ -151,15 +151,12 @@ impl Vhd {
     /// `force_type` is explicitly specified.
     ///
     /// # Parameters
-    ///
     /// - `path`: The path to the VHD/VHDX file.
     /// - `open_mode`: Specifies the mode in which to open the file (`ReadOnly` or `ReadWrite`).
     /// - `force_type`: An optional parameter to explicitly set the VHD type, overriding the inferred type.
     ///
-    /// # Returns
-    ///
-    /// A `Result` containing the initialized `Vhd` instance on success, or an error if the file
-    /// could not be opened.
+    /// # Errors
+    /// Returns an error if the file could not be opened.
     pub fn new<P: AsRef<OsStr>>(
         path: P,
         open_mode: OpenMode,
@@ -183,19 +180,18 @@ impl Vhd {
     ) -> Result<Self> {
         let wide_path: Vec<u16> = path.as_ref().encode_wide().chain(Some(0)).collect();
 
-        let vhd_type = match force_type {
-            Some(s) => Ok(s),
-            None => {
-                let ext = std::path::Path::new(&path)
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(|ext| ext.to_lowercase());
+        let vhd_type = if let Some(vhd_type) = force_type {
+            Ok(vhd_type)
+        } else {
+            let ext = std::path::Path::new(&path)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(str::to_lowercase);
 
-                match ext.as_deref() {
-                    Some("vhd") => Ok(VhdType::Vhd),
-                    Some("vhdx") => Ok(VhdType::Vhdx),
-                    _ => Err(Error::UnknownFileExtension),
-                }
+            match ext.as_deref() {
+                Some("vhd") => Ok(VhdType::Vhd),
+                Some("vhdx") => Ok(VhdType::Vhdx),
+                _ => Err(Error::UnknownFileExtension),
             }
         }?;
 
@@ -237,8 +233,10 @@ impl Vhd {
     /// last until the [`Vhd`] is dropped.
     ///
     /// # Returns
-    ///
     /// A `char` representing the device letter where the [`Vhd`] was successfully mounted.
+    ///
+    /// # Errors
+    /// If Windows fails to mount the virtual disk.
     pub fn attach(&mut self, persistent: bool) -> Result<char> {
         let mut flags = 0;
 
@@ -282,9 +280,8 @@ impl Vhd {
     /// has not been attached. Manual detachment is only necessary if the VHD was attached in
     /// persistent mode. Otherwise, the [`Vhd`] will be automatically detached when it is dropped.
     ///
-    /// # Returns
-    ///
-    /// A `Result` indicating success or containing the error encountered during detachment.
+    /// # Errors
+    /// If Windows fails to detach the virtual disk.
     pub fn detach<P: AsRef<OsStr>>(path: P) -> Result<()> {
         let inner_vhd = Self::open(path, OpenMode::ReadOnly, None, VIRTUAL_DISK_ACCESS_DETACH)?;
         let result =
@@ -295,13 +292,14 @@ impl Vhd {
         Ok(())
     }
 
-    /// Retrieves the size information of the [`Vhd`],
-    /// including `VirtualSize` (u64), `PhysicalSize` (u64), `BlockSize` (u32), and `SectorSize` (u32).
+    /// Retrieves the size information of the [`Vhd`], including `VirtualSize` (u64),
+    /// `PhysicalSize` (u64), `BlockSize` (u32), and `SectorSize` (u32).
     ///
     /// # Returns
+    /// A [`DiskInfo`] struct with the size details.
     ///
-    /// A `Result` containing a `GET_VIRTUAL_DISK_INFO_0_3` struct with the size details on success,
-    /// or an error if the information could not be retrieved.
+    /// # Errors
+    /// If Windows fails to retrieve the information.
     pub fn get_size(&mut self) -> Result<DiskInfo> {
         let mut info = GET_VIRTUAL_DISK_INFO {
             Version: GET_VIRTUAL_DISK_INFO_SIZE,
@@ -333,9 +331,10 @@ impl Vhd {
     /// This method returns a `VhdIdentifier` that uniquely identifies the virtual disk.
     ///
     /// # Returns
+    /// [`VhdIdentifier`] of the virtual disk
     ///
-    /// A `Result` containing the `VhdIdentifier` of the virtual disk on success, or an error if the identifier could not be retrieved.
-    ///
+    /// # Errors
+    /// If Windows fails to retrieve the identifier.
     pub fn get_identifier(&mut self) -> Result<VhdIdentifier> {
         let mut info = GET_VIRTUAL_DISK_INFO {
             Version: GET_VIRTUAL_DISK_INFO_IDENTIFIER,
@@ -377,7 +376,7 @@ fn get_drive_letters() -> Vec<char> {
         if buffer[i] == 0 {
             if start < i {
                 // Get the first character of the wide string slice and convert it to char
-                if let Some(first_char) = std::char::from_u32(buffer[start] as u32) {
+                if let Some(first_char) = std::char::from_u32(u32::from(buffer[start])) {
                     drive_letters.push(first_char);
                 }
             }
