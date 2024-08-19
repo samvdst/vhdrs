@@ -85,11 +85,8 @@ pub enum Error {
     #[error("Failed to detect file extension.")]
     UnknownFileExtension,
 
-    #[error("Failed to open virtual disk. Error code: {0}")]
-    UNKNOWN_OPEN_ERROR(u32),
-
     #[error("Failed to attach virtual disk. Error code: {0}")]
-    UNKNOWN_ATTACH_ERROR(u32),
+    UNKNOWN_WINDOWS_ERROR(u32),
 
     #[error("Incorrect function.")]
     ERROR_INVALID_FUNCTION,
@@ -1093,7 +1090,7 @@ impl From<u32> for Error {
             ERROR_PROCESS_MODE_ALREADY_BACKGROUND => Self::ERROR_PROCESS_MODE_ALREADY_BACKGROUND,
             ERROR_PROCESS_MODE_NOT_BACKGROUND => Self::ERROR_PROCESS_MODE_NOT_BACKGROUND,
             ERROR_INVALID_ADDRESS => Self::ERROR_INVALID_ADDRESS,
-            _ => Self::UNKNOWN_ATTACH_ERROR(value),
+            _ => Self::UNKNOWN_WINDOWS_ERROR(value),
         }
     }
 }
