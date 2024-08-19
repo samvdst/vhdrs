@@ -39,6 +39,25 @@ impl Drop for Vhd {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct DiskInfo {
+    pub virtual_size: u64,
+    pub physical_size: u64,
+    pub block_size: u32,
+    pub sector_size: u32,
+}
+
+impl From<GET_VIRTUAL_DISK_INFO_0_3> for DiskInfo {
+    fn from(value: GET_VIRTUAL_DISK_INFO_0_3) -> Self {
+        Self {
+            virtual_size: value.VirtualSize,
+            physical_size: value.PhysicalSize,
+            block_size: value.BlockSize,
+            sector_size: value.SectorSize,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum OpenMode {
     ReadOnly,
@@ -163,8 +182,8 @@ impl Vhd {
     /// Mounts the given [`Vhd`] to a Windows device.
     ///
     /// If `persistent` is set to `true`, the [`Vhd`] will remain mounted until it is explicitly
-    /// unmounted or the Windows system is shut down. If `persistent` is `false`, the mount will last
-    /// only as long as the [`Vhd`] is not dropped.
+    /// unmounted or the Windows system is shut down. If `persistent` is `false`, the mount will
+    /// last until the [`Vhd`] is dropped.
     ///
     /// # Returns
     ///
@@ -232,7 +251,7 @@ impl Vhd {
     ///
     /// A `Result` containing a `GET_VIRTUAL_DISK_INFO_0_3` struct with the size details on success,
     /// or an error if the information could not be retrieved.
-    pub fn get_size(&mut self) -> Result<GET_VIRTUAL_DISK_INFO_0_3> {
+    pub fn get_size(&mut self) -> Result<DiskInfo> {
         let mut info = GET_VIRTUAL_DISK_INFO {
             Version: GET_VIRTUAL_DISK_INFO_SIZE,
             Anonymous: GET_VIRTUAL_DISK_INFO_0 {
@@ -255,7 +274,7 @@ impl Vhd {
             return Err(result.into());
         }
 
-        unsafe { Ok(info.Anonymous.Size) }
+        unsafe { Ok(info.Anonymous.Size.into()) }
     }
 
     /// Retrieves the unique identifier (`VhdIdentifier`) of the attached [`Vhd`].
@@ -274,7 +293,7 @@ impl Vhd {
                     data1: 0,
                     data2: 0,
                     data3: 0,
-                    data4: [0, 0, 0, 0, 0, 0, 0, 0],
+                    data4: [0; 8],
                 },
             },
         };
@@ -340,18 +359,7 @@ mod tests {
         sleep(Duration::from_secs(1));
         let mut vhd = Vhd::new("file.vhd", OpenMode::ReadOnly, None).unwrap();
         let info = vhd.get_size();
-        match info {
-            Ok(info) => {
-                println!("Virtual Size: {}", info.VirtualSize);
-                println!("Physical Size: {}", info.PhysicalSize);
-                println!("Block Size: {}", info.BlockSize);
-                println!("Sector Size: {}", info.SectorSize);
-            }
-            Err(e) => {
-                dbg!(e);
-                panic!();
-            }
-        }
+        dbg!(&info);
     }
 
     #[test]
