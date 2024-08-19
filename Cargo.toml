@@ -1,7 +1,17 @@
 [package]
 name = "vhdrs"
 version = "0.1.0"
+authors = ["Samuel Van der Stappen <shogun_einst.0i@icloud.com>"]
+license = "MIT"
+readme = "README.md"
 edition = "2021"
+repository = "https://github.com/samvdst/vhdrs"
+documentation = "https://docs.rs/vhdrs"
+categories = ["os::windows-apis", "filesystem"]
+keywords = ["vhd", "vhdx", "mount", "disk", "windows"]
+description = """
+A lightweight library that provides an ergonomic interface for managing Virtual Hard Disks (VHD/VHDX) on Windows systems. It leverages the Windows API to facilitate operations such as opening, attaching, detaching, and retrieving information from VHD files.
+"""
 
 [dependencies]
 windows-sys = { version = "0.59", features = [
